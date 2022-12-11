@@ -1,0 +1,172 @@
+#!/bin/sh
+# speedwm-shutdown
+# This simple script uses $RUNLAUNCHER to ask the user what action they want to perform.
+#
+# NOTE: You must either permit nopass for poweroff and reboot commands for your user or simply enable nopass entirely!!
+
+case "$RUNLAUNCHER" in
+"") RUNLAUNCHER=dmenu ;;
+esac
+
+case "$TERMINAL" in
+"") TERMINAL=st ;;
+esac
+
+HAVE_GRID="true"
+if [ -e "$HOME/.config/speedwm/globalrc" ]; then
+		. $HOME/.config/speedwm/globalrc
+else
+		
+		printf "HAVE_GRID=$HAVE_GRID # Whether or not to use the Grid argument. If you do not have the dmenu grid patch, set this to false. Doing so will disable grid." > $HOME/.config/speedwm/globalrc
+fi
+
+if [ "$HAVE_GRID" = "true" ]; then
+		GRIDNUM="1"
+fi
+
+if [ "$HAVE_GRID" = "true" ]; then
+		GRIDARG="-g"
+fi
+
+BINDIR="$(dirname $(command -v speedwm-core))/"
+
+EXPORTDIR=$HOME/.config/speedwm
+mkdir -p $EXPORTDIR
+
+command -v sudo > /dev/null && PERM=sudo
+command -v doas > /dev/null && PERM=doas
+command -v rootdo > /dev/null && PERM=rootdo
+
+case "$PERM" in
+"") PERM=su ;;
+esac
+
+COL_NORMAL_TEXT_NORMAL="#ffffff"
+COL_NORMAL_TEXT_SELECTED="#ffffff"
+COL_NORMAL_BACKGROUND_NORMAL="#333333"
+COL_NORMAL_BACKGROUND_SELECTED="#222222"
+COL_WARNING_TEXT_NORMAL="#ffffff"
+COL_WARNING_TEXT_SELECTED="#000000"
+COL_WARNING_BACKGROUND_NORMAL="#DC143C"
+COL_WARNING_BACKGROUND_SELECTED="#8b0000"
+USEDEFAULTCOLORS=true
+LOCK_TEXT=""
+
+# Load config if available and override settings
+if [ -e "$EXPORTDIR/powermenurc" ]; then
+		. $EXPORTDIR/powermenurc
+else
+		printf "# Colors for the prompt. Replace the color values with 'dmenu' for regular default colors." > $EXPORTDIR/powermenurc
+		printf "\nCOL_NORMAL_TEXT_NORMAL=$COL_NORMAL_TEXT_NORMAL # Text color for not selected options (Regular prompt)" >> $EXPORTDIR/powermenurc
+		printf "\nCOL_NORMAL_TEXT_SELECTED=$COL_NORMAL_TEXT_SELECTED # Text color for selected option (Regular prompt)" >> $EXPORTDIR/powermenurc
+		printf "\nCOL_NORMAL_BACKGROUND_NORMAL=$COL_NORMAL_BACKGROUND_NORMAL # Background color for not selected options (Regular prompt)" >> $EXPORTDIR/powermenurc
+		printf "\nCOL_NORMAL_BACKGROUND_SELECTED=$COL_NORMAL_BACKGROUND_SELECTED # Background color for selected option (Regular prompt)" >> $EXPORTDIR/powermenurc
+		printf "\nCOL_WARNING_TEXT_NORMAL=$COL_WARNING_TEXT_NORMAL # Text color for not selected options (Warning prompt)" >> $EXPORTDIR/powermenurc
+		printf "\nCOL_WARNING_TEXT_SELECTED=$COL_WARNING_TEXT_SELECTED # Text color for selected option (Warning prompt)" >> $EXPORTDIR/powermenurc
+		printf "\nCOL_WARNING_BACKGROUND_NORMAL=$COL_WARNING_BACKGROUND_NORMAL # Background color for not selected options (Warning prompt)" >> $EXPORTDIR/powermenurc
+		printf "\nCOL_WARNING_BACKGROUND_SELECTED=$COL_WARNING_BACKGROUND_SELECTED # Background color for selected option (Warning prompt)" >> $EXPORTDIR/powermenurc
+		printf "\nPERM=$PERM # Root access tool (sudo, doas, etc.). Must support nopass for poweroff and reboot commands." >> $EXPORTDIR/powermenurc
+		printf "\nUSEDEFAULTCOLORS=$USEDEFAULTCOLORS # Use $RUNLAUNCHER colors instead of custom ones (true/false)" >> $EXPORTDIR/powermenurc
+		printf "\nLOCK_TEXT=$LOCK_TEXT # Text to display on the lock screen. Only works with slock and requires the message patch." >> $EXPORTDIR/powermenurc
+fi
+
+case "$LOCK_TEXT" in
+"") MESSAGEFLAG="" ;;
+esac
+
+SBFLAG="-sb"
+SFFLAG="-sf"
+NBFLAG="-nb"
+NFFLAG="-nf"
+
+if [ "$USEDEFAULTCOLORS" = "true" ]; then
+		SBFLAG=""
+		NBFLAG=""
+		SFFLAG=""
+		NFFLAG=""
+		COL_NORMAL_BACKGROUND_SELECTED=""
+		COL_NORMAL_BACKGROUND_NORMAL=""
+		COL_NORMAL_TEXT_SELECTED=""
+		COL_NORMAL_TEXT_NORMAL=""
+		COL_WARNING_BACKGROUND_NORMAL=""
+		COL_WARNING_TEXT_SELECTED=""
+		COL_WARNING_TEXT_NORMAL=""
+		COL_WARNING_BACKGROUND_SELECTED=""
+fi
+
+# Standard Background
+if [ "$COL_NORMAL_BACKGROUND_SELECTED" = "dmenu" ]; then
+		SBFLAG=""
+		COL_NORMAL_BACKGROUND_SELECTED=""
+fi
+
+# Normal Background
+if [ "$COL_NORMAL_BACKGROUND_NORMAL" = "dmenu" ]; then
+		NBFLAG=""
+		COL_NORMAL_BACKGROUND_NORMAL=""
+fi
+
+# Standard Background
+if [ "$COL_NORMAL_TEXT_SELECTED" = "dmenu" ]; then
+		SFFLAG=""
+		COL_NORMAL_TEXT_SELECTED=""
+fi
+
+# Normal Text
+if [ "$COL_NORMAL_TEXT_NORMAL" = "dmenu" ]; then
+		NFFLAG=""
+		COL_NORMAL_TEXT_NORMAL=""
+fi
+
+# Standard Background
+if [ "$COL_WARNING_BACKGROUND_SELECTED" = "dmenu" ]; then
+		SBFLAG=""
+		COL_WARNING_BACKGROUND_SELECTED=""
+fi
+
+# Normal Background
+if [ "$COL_WARNING_BACKGROUND_NORMAL" = "dmenu" ]; then
+		NBFLAG=""
+		COL_WARNING_BACKGROUND_NORMAL=""
+fi
+# Standard Background
+if [ "$COL_WARNING_TEXT_SELECTED" = "dmenu" ]; then
+		SFFLAG=""
+		COL_WARNING_TEXT_SELECTED=""
+fi
+
+# Normal Text
+if [ "$COL_WARNING_TEXT_NORMAL" = "dmenu" ]; then
+		NFFLAG=""
+		COL_WARNING_TEXT_NORMAL=""
+fi
+
+MOREOPTS() {
+  USER_OPT3=$(printf "Restart speedwm\nEnd task\nspeedwm command\n.." | $RUNLAUNCHER -l 4 $GRIDARG $GRIDNUM -p "What do you want to do?" $NBFLAG $COL_NORMAL_BACKGROUND_NORMAL $SBFLAG $COL_NORMAL_BACKGROUND_SELECTED $NFFLAG $COL_NORMAL_TEXT_NORMAL $SFFLAG $COL_NORMAL_TEXT_SELECTED)
+  
+  case "$USER_OPT3" in
+  "") exit 0 ;;
+  "Restart speedwm") speedwm_run -r && exit 0 ;;
+  "End task") ENDTASK=$(printf "\n" | $RUNLAUNCHER -l 1 -p "What task to end?" $NBFLAG $COL_NORMAL_BACKGROUND_NORMAL $SBFLAG $COL_NORMAL_BACKGROUND_SELECTED $NFFLAG $COL_NORMAL_TEXT_NORMAL $SFFLAG $COL_NORMAL_TEXT_SELECTED) && pkill $ENDTASK && exit 0 ;;
+  "speedwm command") speedwm-utils && exit 0 ;;
+  "..") $0 && exit 0 ;;
+  esac
+}
+
+USER_OPT1=$(printf "Shutdown\nReboot\nExit\nLock\nMore" | $RUNLAUNCHER -l 5 -p "What do you want to do?" $NBFLAG $COL_NORMAL_BACKGROUND_NORMAL $SBFLAG $COL_NORMAL_BACKGROUND_SELECTED $NFFLAG $COL_NORMAL_TEXT_NORMAL $SFFLAG $COL_NORMAL_TEXT_SELECTED)
+
+case "$USER_OPT1" in
+"Shutdown") CMD="$PERM poweroff" ;;
+"Reboot") CMD="$PERM reboot" ;;
+"Exit") exit 0 ;;
+"Lock") CMD="slock $MESSAGEFLAG '$LOCK_TEXT'" ;;
+"More") MOREOPTS ;;
+"") exit 0 ;;
+esac
+
+USER_OPT2=$(printf "Yes\nNo" | $RUNLAUNCHER -l 2 -p "Are you sure?" $NBFLAG "$COL_WARNING_BACKGROUND_NORMAL" $SBFLAG "$COL_WARNING_BACKGROUND_SELECTED" $NFFLAG "$COL_WARNING_TEXT_NORMAL" $SFFLAG "$COL_WARNING_TEXT_SELECTED")
+case "$USER_OPT2" in
+"Yes") $CMD ;;
+"No") exit 0 ;;
+"") exit 0 ;;
+esac

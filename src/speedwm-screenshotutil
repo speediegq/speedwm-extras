@@ -1,0 +1,150 @@
+#!/bin/sh
+# speedwm-screenshotutil
+# Built in screenshot utility for my build of speedwm
+# Requires curl, maim and xclip.
+#
+# curl snippet by nezbednik, thank you!
+
+rm -f /tmp/screenshot*
+
+case "$RUNLAUNCHER" in
+"") RUNLAUNCHER=dmenu ;;
+esac
+
+BINDIR="$(dirname $(command -v speedwm-core))/"
+
+HAVE_GRID="true"
+if [ -e "$HOME/.config/speedwm/globalrc" ]; then
+		. $HOME/.config/speedwm/globalrc
+else
+		
+		printf "HAVE_GRID=$HAVE_GRID # Whether or not to use the Grid argument. If you do not have the dmenu grid patch, set this to false. Doing so will disable grid." > $HOME/.config/speedwm/globalrc
+fi
+
+if [ "$HAVE_GRID" = "true" ]; then
+		GRIDNUM="1"
+fi
+
+if [ "$HAVE_GRID" = "true" ]; then
+		GRIDARG="-g"
+fi
+
+EXPORTDIR=$HOME/.config/speedwm
+
+mkdir -p $EXPORTDIR
+
+# Config
+SHOWCURSOR="true" # Show cursor or not (true/false)
+DEFAULTSCREENSHOTPATH=$HOME/Screenshots # Default screenshot path
+FORMAT="+%T_%D" # Screenshot format
+
+if [ -e "$EXPORTDIR/screenshotutilrc" ]; then
+		. $EXPORTDIR/screenshotutilrc
+else
+		printf "SHOWCURSOR=$SHOWCURSOR # Show cursor or not (true/false)" > $EXPORTDIR/screenshotutilrc
+		printf "\nDEFAULTSCREENSHOTPATH=$DEFAULTSCREENSHOTPATH # Where screenshots are saved\n" >> $EXPORTDIR/screenshotutilrc
+		echo "FORMAT='$FORMAT' # Where screenshots are saved. : and / will be replaced with _ and nothing respectively." >> $EXPORTDIR/screenshotutilrc
+fi
+
+case "$SHOWCURSOR" in
+"true") ARG2="" ;;
+"false") ARG2=u ;;
+esac
+
+# Help argument action
+HELP() {
+		printf "speedwm-screenshotutil\n-t | Wait <second argument> seconds and then take the screenshot."
+		printf "\n-f | Take a full screen screenshot instead of selecting manually."
+		printf "\n-s | Take a screenshot, allowing the user to select a section manually."
+		printf "\n-o | Select a file and allow the user to perform actions with it."
+		printf "\n-tf | Wait <second argument> seconds and then take a full screen screenshot."
+		printf "\n-h | View this help screen"
+		printf "\nNo arguments will print this screen.\n"
+}
+
+# Sleep argument (-t)
+if [ "$1" = "-t" ]; then
+		sleep "$2" && maim -s${ARG2}B > /tmp/screenshot-$DATE || exit 0
+fi
+
+# Open argument (-o)
+if [ "$1" = "-o" ]; then
+		if [ -e "$2" ]; then
+				cat "$2" > /tmp/screenshot-$DATE
+		else
+				printf "File $2 not found.\n"
+				exit 1
+		fi
+fi
+
+# Sleep and full argument (-tf)
+if [ "$1" = "-tf" ]; then
+		sleep "$2" && maim -${ARG2}B > /tmp/screenshot-$DATE || exit 0
+elif [ "$1" = "-ft" ]; then
+		sleep "$2" && maim -${ARG2}B > /tmp/screenshot-$DATE || exit 0
+fi
+
+# Full argument (-f)
+if [ "$1" = "" ]; then
+		HELP ; exit 0
+else
+		if [ "$1" = "-f" ]; then
+				if [ -e "/tmp/screenshot-$DATE" ]; then
+						exists=true
+				else
+						maim -${ARG2}B > /tmp/screenshot-$DATE || exit 0 
+				fi
+		fi
+		
+		if [ "$1" = "-s" ]; then
+				if [ -e "/tmp/screenshot-$DATE" ]; then
+						exists=true
+				else
+						maim -s${ARG2}B > /tmp/screenshot-$DATE || exit 0
+				fi
+		fi
+fi
+
+# Help argument (-h)
+if [ "$1" = "-h" ]; then
+		HELP ; exit 0
+fi
+
+# User action
+if [ -e "/tmp/screenshot-$DATE" ]; then
+		U_INPUT="$(printf "Image\nURL\nSave" | $RUNLAUNCHER -l 3 -p "Copy to clipboard as an: ")"
+else
+		exit 0
+fi
+
+# Send notification for URL
+SENDNOTIF_URL() {
+  if [ -e "${BINDIR}notify-send" ]; then
+		notify-send "Screenshot copied to clipboard."
+  fi
+}
+
+# Send notifcation for local image save
+SENDNOTIF_SAVE() {
+  if [ -e "${BINDIR}notify-send" ]; then
+		notify-send "Screenshot saved to $SAVEDIR."
+  fi
+}
+
+# Send notification for image copied to clipboard
+SENDNOTIF_IMG() {
+  if [ -e "${BINDIR}notify-send" ]; then
+		notify-send "Screenshot copied to clipboard."
+  fi
+}
+
+mkdir -p $DEFAULTSCREENSHOTPATH
+
+# Perform actions based on user input
+case "$U_INPUT" in
+"Image") cat /tmp/screenshot-$DATE | xclip -selection clipboard -t image/png && SENDNOTIF_IMG ;;
+"URL") printf "\n" | xclip -selection clipboard && curl -s -F source=@"/tmp/screenshot-$DATE" -F "type=file" -F "action=upload" "https://imgbb.com/json" | sed "s/\\\\//g; s/\"/\\n/g" | grep -m 1 -A 2 url | tail -n 1 | xclip -selection clipboard && SENDNOTIF_URL ;;
+"Save") SAVEDIR=$(printf "$DEFAULTSCREENSHOTPATH/screenshot-$(date "$FORMAT" | sed "s|:|-|g" | sed "s|/||g").png" | $RUNLAUNCHER -l 1 $GRIDARG $GRIDNUM -p "Where do you want to save it? (Including filename)") && cat /tmp/screenshot-$DATE > $SAVEDIR && SENDNOTIF_SAVE ;;
+esac
+
+rm -f /tmp/screenshot* # Remove the screenshots

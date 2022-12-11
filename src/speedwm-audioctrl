@@ -1,0 +1,146 @@
+#!/bin/sh
+# speedwm-audioctrl
+# This simple shell script handles audio controls for speedwm.
+# Run speedwm-audioctrl -help for more information!
+# License: GPLv3.
+#
+# Requires pactl for pulseaudio/pipewire or amixer for alsa
+# Additionally requires pulsemixer for pulseaudio/pipewire or alsamixer for alsa if the mixer functionality is used
+
+BINDIR="$(dirname $(command -v speedwm-core))/"
+
+MUTE() {
+  # Mute for pulseaudio/pipewire
+  if [ "$AUDIO" = "pulse" ]; then
+		if [ -e "${BINDIR}pactl" ]; then
+				pactl set-sink-mute @DEFAULT_SINK@ toggle
+				 if [ -e "${BINDIR}notify-send" ]; then
+						 if [ "$remute" = "" ]; then
+								notify-send " Toggled mute"
+						 fi
+				 fi
+		else
+				 amixer set Master toggle
+				 if [ -e "${BINDIR}notify-send" ]; then
+						 if [ "$remute" = "" ]; then
+								notify-send " Toggled mute"
+						 fi
+				 fi
+		fi
+  fi
+
+  kill -38 $(pidof status)
+}
+
+RAISE() {
+  if [ "$AUDIO" = "pulse" ]; then
+		if [ -e "${BINDIR}pactl" ]; then
+				if [ "$(pactl get-sink-volume @DEFAULT_SINK@ | awk '{ print $5;exit }' | sed 's/%//g')" = "110" ]; then
+						pactl set-sink-volume @DEFAULT_SINK@ 100%
+				else
+						pactl set-sink-volume @DEFAULT_SINK@ +10%
+						test ${BINDIR}notify-send && notify-send "  $(pactl get-sink-volume @DEFAULT_SINK@ | awk '{ print $5;exit }')"
+				fi
+		fi
+  else
+		if [ "$(amixer -c 0 get Master | tail -n 1 | sed -r "s/.*\[(.*)%\].*/\1/")" = "100" ]; then
+				a=$a
+		else
+				amixer -c 0 set Master 7%+
+				ls ${BINDIR}notify-send && notify-send "  $(amixer -c 0 get Master | tail -n 1 | sed -r "s/.*\[(.*)%\].*/\1/")%"
+		fi
+  fi
+
+  kill -38 $(pidof status)
+}
+
+LOWER() {
+  if [ "$AUDIO" = "pulse" ]; then
+		if [ -e "${BINDIR}pactl" ]; then
+				if [ "$(pactl get-sink-volume @DEFAULT_SINK@ | awk '{ print $5;exit }' | sed 's/%//g')" != "0" ]; then
+						pactl set-sink-volume @DEFAULT_SINK@ -10%
+						test ${BINDIR}notify-send && notify-send "  $(pactl get-sink-volume @DEFAULT_SINK@ | awk '{ print $5;exit }')"
+				fi
+				
+		fi
+  else
+		if [ "$(amixer -c 0 get Master | tail -n 1 | sed -r "s/.*\[(.*)%\].*/\1/")" = "0" ]; then
+				a=$a
+		else
+				amixer -c 0 set Master 7%-
+				test ${BINDIR}notify-send && notify-send "  $(amixer -c 0 get Master | tail -n 1 | sed -r "s/.*\[(.*)%\].*/\1/")%"
+		fi
+  fi
+  
+  kill -38 $(pidof status)
+}
+
+GETVOL() {
+  if [ "$AUDIO" = "pulse" ]; then
+		if [ -e "${BINDIR}pactl" ]; then
+				pactl get-sink-volume @DEFAULT_SINK@ | awk '{ print $5;exit }'
+		fi
+  else
+		echo "$(amixer -c 0 get Master | tail -n 1 | sed -r "s/.*\[(.*)%\].*/\1/")%"
+  fi
+}
+
+GETMUTE() {
+  if [ "$AUDIO" = "pulse" ]; then
+		if [ -e "${BINDIR}pactl" ]; then
+				pactl get-sink-mute @DEFAULT_SINK@ | sed "s/Mute: //; s/no/Not muted/; s/yes/Muted/g"
+		fi
+  fi
+}
+
+SWITCH() {
+  ls $HOME/.local/share/audioctrl-status || echo "0" > $HOME/.local/share/audioctrl-status
+  if [ "$(cat $HOME/.local/share/audioctrl-status)" = "0" ]; then
+		amixer -c 0 sset 'Auto-Mute Mode' Enabled ; echo "1" > $HOME/.local/share/audioctrl-status
+		if [ -e "${BINDIR}notify-send" ]; then
+				notify-send " Switched to headphones."
+		fi
+  else
+		amixer -c 0 sset 'Auto-Mute Mode' Disabled ; echo "0" > $HOME/.local/share/audioctrl-status
+		if [ -e "${BINDIR}notify-send" ]; then
+				notify-send " Switched to speakers."
+		fi
+  fi
+}
+
+RUNMIXER() {
+  if [ "$AUDIO" = "pulse" ]; then
+		if [ -e "${BINDIR}pulsemixer" ]; then
+				pulsemixer
+		elif [ -e "${BINDIR}alsamixer" ]; then
+				alsamixer
+		fi
+  fi
+}
+
+AUDIO=$2
+case "$2" in
+"") AUDIO=alsa
+if [ -e "${BINDIR}pulsemixer" ]; then
+		AUDIO=pulse
+else
+		if [ -e "${BINDIR}pactl" ]; then
+				AUDIO=pulse
+		fi
+fi
+;;
+esac
+
+case "$1" in
+"-mute") MUTE && GETMUTE > /tmp/speedwm-audioctrl-mutestatus ;;
+"-remute") remute=true ; MUTE && GETMUTE > /tmp/speedwm-audioctrl-mutestatus  ; MUTE && GETMUTE > /tmp/speedwm-audioctrl-mutestatus ; remute="" ; exit 0 ;;
+"-raise") RAISE ;;
+"-lower") LOWER ;;
+"-switch") SWITCH && exit 0 ;;
+"-getvol") GETVOL && exit 0 ;;
+"-getmute") GETMUTE > /tmp/speedwm-audioctrl-mutestatus && exit 0 ;;
+"-getbackend") printf "$AUDIO\n" && exit 0 ;;
+"-runmixer") RUNMIXER && exit 0 ;;
+"-help") printf "speedwm-audioctrl\n-mute | Toggle mute\n-raise | Raise the volume by 7\n-lower | Lower the volume by 7\n-switch | Toggle output\n-getvol | Get current volume in percentage\n-getmute | Get mute status\n-getbackend | Get audio backend (ALSA, PulseAudio, etc.)\n-runmixer | Run the audio mixer detected on the system\n-remute | Mute and unmute.\n-help | Display this help screen\nNo arguments | Display this help screen\n"; exit 0 ;;
+"") $0 -help && exit 0 ;;
+esac

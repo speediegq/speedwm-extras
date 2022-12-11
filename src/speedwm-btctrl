@@ -1,0 +1,145 @@
+#!/bin/sh
+# speedwm-btctrl
+# Basic dmenu/other run launcher Bluetooth manager written for speedwm.
+# Licensed under GNU GPLv3.
+
+# Check stuff
+CHECK() {
+  case "$RUNLAUNCHER" in
+  "") RUNLAUNCHER=dmenu ;;
+  esac
+  
+  BINDIR="$(dirname $(command -v speedwm-core))/"
+}
+
+HAVE_GRID="true"
+
+if [ -e "$HOME/.config/speedwm/globalrc" ]; then
+		. $HOME/.config/speedwm/globalrc
+else
+		
+		printf "HAVE_GRID=$HAVE_GRID # Whether or not to use the Grid argument. If you do not have the dmenu grid patch, set this to false. Doing so will disable grid." > $HOME/.config/speedwm/globalrc
+fi
+
+if [ "$HAVE_GRID" = "true" ]; then
+		GRIDNUM="1"
+fi
+
+if [ "$HAVE_GRID" = "true" ]; then
+		GRIDARG="-g"
+fi
+
+CHECK
+
+# Help
+HELP() {
+  printf "\n1. Turn on your device\n2. Make sure the bluetooth service is running. If it is not, start it.\n3. Press the pair button on your device\n4. Select your device in the list of devices. If it does not show up, select 'Refresh'.\n5. Select 'Pair' and then optionally 'Trust' to save it in the list of devices.\n6. And finally, select 'Connect' to connect the device." | $RUNLAUNCHER -l 12 $GRIDARG $GRIDNUM -p 'How to use' 
+  $0 && exit 0
+}
+
+# Enable bluetooth and scan for devices
+ENABLE_BT() {
+  bluetoothctl power on > /dev/null && echo "Power: On"
+  bluetoothctl scan on & # Start scanning for devices
+  bluetoothctl devices | grep -q "No default controller" && printf "No Bluetooth controller was found.\n" && exit 1
+  USEROPT_1="$(printf "$(bluetoothctl devices | cut -d\  -f3-)\n------\nRefresh\nHelp\nExit" | $RUNLAUNCHER -l 12 $GRIDARG $GRIDNUM -p "Select a device")"
+  
+  # Check what to do
+  case "$USEROPT_1" in
+  "") exit 0 ;;
+  "Refresh") ENABLE_BT ;;
+  "Exit") exit 0 ;;
+  "Help") HELP && $0 && exit 0 ;;
+  esac
+
+  SELDEVICE_MAC="$(bluetoothctl devices | grep "$USEROPT_1$" | awk '{ print $2 }')"
+  echo "$SELDEVICE_MAC"
+
+  # Check if a MAC was grabbed
+  case "$SELDEVICE_MAC" in
+  "") echo "Could not get MAC" && exit 1 ;;
+  esac
+}
+
+ENABLE_BT
+
+# List options for the device
+LIST_OPTIONS() {
+  USEROPT_2="$(echo -e "-- Options --\nConnect\nDisconnect\n-- Toggle --\nPair\nRemove\nTrust\nUntrust\n--\nExit\nHelp" | sed "s/-e //g" | $RUNLAUNCHER $GRIDARG $GRIDNUM -l 20 -p "What do you want to do with this device?" | awk '{ print $1 }')"
+}
+
+LIST_OPTIONS
+
+# Trust device
+TRUST() {
+  bluetoothctl trust $SELDEVICE_MAC
+}
+
+# Pair device
+PAIR() {
+  bluetoothctl pair $SELDEVICE_MAC
+}
+
+# Remove device
+REMOVE() {
+  bluetoothctl remove $SELDEVICE_MAC
+}
+
+UNTRUST() {
+  bluetoothctl untrust $SELDEVICE_MAC
+}
+
+# Connect
+CONNECT() {
+  if [ -e "$/tmp/isconnected" ]; then
+		  NOTIFY_ALREADY_CONNECTED && exit 0
+  fi
+
+  bluetoothctl connect $SELDEVICE_MAC
+  touch /tmp/isconnected
+}
+
+# Disconnect
+DISCONNECT() {
+  rm -f /tmp/isconnected
+  bluetoothctl disconnect $SELDEVICE_MAC
+}
+
+# Notification when connecting
+NOTIFY_CONNECT() {
+  notify-send " Connected to ${USEROPT_1}!"
+}
+
+# Notification when disconnecting
+NOTIFY_DISCONNECT() {
+  notify-send " Disconnected from ${USEROPT_1}!"
+}
+
+# Notification when removing
+NOTIFY_REMOVE() {
+  notify-send " Removed ${USEROPT_1}!"
+}
+
+# Notification when already connected
+NOTIFY_ALREADY_CONNECTED() {
+  notify-send " Device $USEROPT_1 is already connected!"
+}
+
+# Perform actions as per user choice
+PERFORM() {
+  case "$USEROPT_2" in
+  "Trust") TRUST && LIST_OPTIONS ;;
+  "Pair") PAIR && LIST_OPTIONS ;;
+  "Connect") CONNECT && NOTIFY_CONNECT && LIST_OPTIONS ;;
+  "Disconnect") DISCONNECT && NOTIFY_DISCONNECT && LIST_OPTIONS ;;
+  "Untrust") UNTRUST && LIST_OPTIONS ;;
+  "Remove") REMOVE && NOTIFY_REMOVE && LIST_OPTIONS ;;
+  "Exit") exit 0 ;;
+  "Help") HELP ;;
+  "") exit 0 ;;
+  esac
+}
+
+PERFORM
+
+$0 && exit 0

@@ -1,0 +1,116 @@
+#!/bin/sh
+# speedwm-utils
+# Because controlling speedwm using shell scripts is based.
+# Licensed under GNU GPLv3.
+
+case "$RUNLAUNCHER" in
+"") RUNLAUNCHER=dmenu # Run launcher to use (dmenu, rofi, etc.) ;;
+esac
+
+HAVE_GRID="true"
+if [ -e "$HOME/.config/speedwm/globalrc" ]; then
+		. $HOME/.config/speedwm/globalrc
+else
+		
+		printf "HAVE_GRID=$HAVE_GRID # Whether or not to use the Grid argument. If you do not have the dmenu grid patch, set this to false. Doing so will disable grid." > $HOME/.config/speedwm/globalrc
+fi
+
+if [ "$HAVE_GRID" = "true" ]; then
+		GRIDNUM="1"
+fi
+
+if [ "$HAVE_GRID" = "true" ]; then
+		GRIDARG="-g"
+fi
+
+VARS() {
+  BINDIR="$(dirname $(command -v speedwm-core))/"
+}
+
+VARS
+
+GENERAL() {
+		case "$(printf "mfact +\nmfact -\nToggle Sticky\nToggle Bar\nToggle Fullscreen\nReset Layout/mfact\nReorganize Tags" | $RUNLAUNCHER -l 20 -p 'What do you want to do?')" in
+		"mfact +") libspeedwm --perform tiling_mfact_inc ;;
+		"mfact -") libspeedwm --perform tiling_mfact_dec ;;
+		"Toggle Sticky") libspeedwm --perform toggle_client_sticky ;;
+		"Toggle Bar") libspeedwm --perform toggle_bar ;;
+		"Toggle Fullscreen") libspeedwm --perform toggle_client_fullscr ;;
+		"Reorganize Tags") libspeedwm --perform tags_reorganize ;;
+		"Reset Layout/mfact") libspeedwm --perform reset_mfact && libspeedwm --perform reset_layout ;;
+		esac
+}
+
+OPT() {
+  MENUOPTS=$(printf "Layout\nReload .Xresources\nGeneral\nExit" | $RUNLAUNCHER -l 20 -p 'What do you want to do?')
+  
+  case "$MENUOPTS" in
+  "Layout") ${0} layout $2 && exit 0 ;;
+  "Reload .Xresources") ${0} reloadcolors && exit 0 ;;
+  "General") ${0} general $2 && exit 0 ;;
+  "Exit") exit 0 ;;
+  esac
+}
+
+HELP() {
+  printf "speedwm-utils - Control speedwm using your terminal or dmenu.\n"
+  printf "\nlayout         Let the user select a speedwm layout"
+  printf "\nreloadcolors   Reload .Xresources"
+  printf "\nexec <signum>  Execute an fsignal signum"
+  printf "\nlist           List all available signums"
+  printf "\n"
+}
+
+L1="$(printf "L1: Tiling\n")"
+L2="$(printf "L2: Floating\n")"
+L3="$(printf "L3: Monocle\n")"
+L4="$(printf "L4: Grid\n")"
+L5="$(printf "L5: Deck\n")"
+L6="$(printf "L6: Centered Master\n")"
+L7="$(printf "L7: Tatami\n")"
+L8="$(printf "L8: Dwindle\n")"
+L9="$(printf "L9: Spiral\n")"
+L10="$(printf "L10: Bottom Stack (Vertical)\n")"
+L11="$(printf "L11: Bottom Stack (Horizontal)\n")"
+L12="$(printf "L12: Grid (Horizontal)\n")"
+L13="$(printf "L13: Dynamic Grid\n")"
+L14="$(printf "L14: Custom\n")"
+L15="$(printf "L15: Empty\n")"
+
+case "$1" in
+"layout") SEL_LAYOUT=$(printf "${L1}\n${L2}\n${L3}\n${L4}\n${L5}\n${L6}\n${L7}\n${L8}\n${L9}\n${L10}\n${L11}\n${L12}\n${L13}\n${L14}\n${L15}\nPrevious Layout\nNext Layout\nEnter S expression" | $RUNLAUNCHER -l 21 -p "Pick a layout: ") ;;
+"reloadcolors") libspeedwm --perform core_wm_reload ;;
+"list") head -n "$(expr "$(cat /usr/share/speedwm/example.signal | wc -l)" - 1)" /usr/share/speedwm/example.signal ;;
+"help") HELP ;;
+"exec")
+		if [ "$2" = "" ]; then
+				exit 0
+		else
+				libspeedwm --rsig $2
+		fi ;;
+"h") HELP ;;
+"general") GENERAL ;;
+"") OPT ;;
+esac
+
+case "$SEL_LAYOUT" in
+"Exit") exit 0 ;;
+"Previous Layout") libspeedwm --perform layout_cycle_down;;
+"Next Layout") libspeedwm --perform layout_cycle_up ;;
+"L1: Tiling") libspeedwm --perform layout_setlayout_tile ;;
+"L2: Floating") libspeedwm --perform layout_setlayout_float ;;
+"L3: Monocle") libspeedwm --perform layout_setlayout_monocle ;;
+"L4: Grid") libspeedwm --perform layout_setlayout_grid ;;
+"L5: Deck") libspeedwm --perform layout_setlayout_deck ;;
+"L6: Centered Master") libspeedwm --perform layout_setlayout_cm ;;
+"L7: Tatami") libspeedwm --perform layout_setlayout_tatami ;;
+"L8: Dwindle") libspeedwm --perform layout_setlayout_dwindle ;;
+"L9: Spiral") libspeedwm --perform layout_setlayout_spiral ;;
+"L10: Bottom Stack (Vertical)") libspeedwm --perform layout_setlayout_bs ;;
+"L11: Bottom Stack (Horizontal)") libspeedwm --perform layout_setlayout_hbs ;;
+"L12: Grid (Horizontal)") libspeedwm --perform layout_setlayout_hgrid ;;
+"L13: Dynamic Grid") libspeedwm --perform layout_setlayout_dgrid ;;
+"L14: Custom") libspeedwm --perform layout_setlayout_custom ;;
+"L15: Empty") libspeedwm --perform layout_setlayout_empty ;;
+"Enter S expression") libspeedwm --perform layout_custom_express ;;
+esac

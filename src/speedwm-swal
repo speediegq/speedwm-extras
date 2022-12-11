@@ -1,0 +1,333 @@
+#!/bin/sh
+# speedwm-swal
+# wallpaper utility written for speedwm.
+# Licensed under the GNU GPLv3 free software license.
+
+ARGS="$@"
+ARG1="$1"
+
+# Default configuration, should be fine for most users.
+SWAL_DEFAULT_CONFIG()
+{
+  SWAL_WALLPAPERDIR=$HOME/Wallpapers
+  SWAL_OLDWALLPAPERDIR=$SWAL_WALLPAPERDIR
+
+  case "$RUNLAUNCHER" in
+  "") RUNLAUNCHER=dmenu ;;
+  esac
+
+  SWAL_OPT=xwallpaper
+  SWAL_EXPORTDIR=$HOME/.config/speedwm/swal # Config directory
+  SWAL_IMAGE_VIEWER="nsxiv -ato" # Image viewer to use (<char>)
+  SWAL_USE_WAL=true # Whether or not to use Pywal if possible (true/false)
+  SWAL_RANDOMIZE=false # Select a random wallpaper on login
+}
+
+# By default, assume we have grid.
+HAVE_GRID="true"
+if [ -e "$HOME/.config/speedwm/globalrc" ]; then
+		. $HOME/.config/speedwm/globalrc
+		echo "Loaded configuration!"
+else
+		
+		printf "HAVE_GRID=$HAVE_GRID # Whether or not to use the Grid argument. If you do not have the dmenu grid patch, set this to false. Doing so will disable grid." > $HOME/.config/speedwm/globalrc
+fi
+
+# Grid number is one
+if [ "$HAVE_GRID" = "true" ]; then
+		GRIDNUM="1"
+fi
+
+# Grid argument
+if [ "$HAVE_GRID" = "true" ]; then
+		GRIDARG="-g"
+fi
+
+
+# Create the configuration
+SWAL_MKCONFIG() {
+  mkdir -p $SWAL_EXPORTDIR
+  touch $SWAL_EXPORTDIR/swalrc
+  SWAL_USE_WAL_NEW=$SWAL_USE_WAL
+  SWAL_WALLPAPERDIR_NEW=$SWAL_WALLPAPERDIR
+
+  SWAL_CHANGE_WALLPAPERDIR() {
+		SWAL_WALLPAPERDIR_NEW=$(printf "Your wallpaper directory" | $RUNLAUNCHER $GRIDARG $GRIDNUM -p "Where are all your wallpapers stored?" -l 1)
+  }
+
+  SWAL_CHANGE_ASK_WAL() {
+		command -v wal > /dev/null && SWAL_USE_WAL_NEW=$(printf "Yes\nNo" | $RUNLAUNCHER $GRIDARG $GRIDNUM -p "Use Pywal?" -l 2 | sed "s|No|false|g; s|Yes|true|g")
+  }
+
+  SWAL_CHANGE_IMAGE_VIEWER() {
+		SWAL_IMAGE_VIEWER=$(printf "" | $RUNLAUNCHER $GRIDARG $GRIDNUM -p "What image viewer do you want to use for previews?" -l 1)
+  }
+
+  SWAL_CHANGE_RANDOMIZE() {
+        SWAL_RANDOMIZE=$(printf "Yes\nNo" | $RUNLAUNCHER $GRIDARG $GRIDNUM -p "Pick a random wallpaper on login?" -l 2 | sed "s|No|false|g; s|Yes|true|g")
+  }
+
+  USER_OPT_ACTION=$(printf "Wallpaper directory\nPywal\nImage Viewer\nRandomize\n------\nExit" | $RUNLAUNCHER $GRIDARG $GRIDNUM -l 10 -p "What setting do you want to change?")
+
+  case "$USER_OPT_ACTION" in
+  "") $0 && exit 0 ;;
+  "Wallpaper directory") SWAL_CHANGE_WALLPAPERDIR && CHANGED=true ;;
+  "Pywal") SWAL_CHANGE_ASK_WAL && CHANGED=true ;;
+  "Image Viewer") SWAL_CHANGE_IMAGE_VIEWER && CHANGED=true ;;
+  "Randomize") SWAL_CHANGE_RANDOMIZE && CHANGED=true ;;
+  "Exit") exit 0 ;;
+  "------") $0 && exit 0 ;;
+  esac
+
+  case "$CHANGED" in
+  "") $0 && exit 0 ;;
+  esac
+
+  case "$SWAL_USE_WAL_NEW" in
+  "true") ASKED=true ;;
+  "false") ASKED=true ;;
+  esac
+
+  if [ "$ASKED" = "" ]; then
+		$0 && exit 0
+  fi
+
+  printf "SWAL_WALLPAPERDIR=$SWAL_WALLPAPERDIR_NEW" > $SWAL_EXPORTDIR/swalrc
+  printf "\nRUNLAUNCHER=$RUNLAUNCHER" >> $SWAL_EXPORTDIR/swalrc
+  printf "\nSWAL_OPT=$SWAL_OPT" >> $SWAL_EXPORTDIR/swalrc
+  printf "\nSWAL_EXPORTDIR=$SWAL_EXPORTDIR" >> $SWAL_EXPORTDIR/swalrc
+  printf "\nSWAL_IMAGE_VIEWER='$SWAL_IMAGE_VIEWER'" >> $SWAL_EXPORTDIR/swalrc
+  printf "\nSWAL_USE_WAL=$SWAL_USE_WAL_NEW" >> $SWAL_EXPORTDIR/swalrc
+  printf "\nSWAL_RANDOMIZE=$SWAL_RANDOMIZE" >> $SWAL_EXPORTDIR/swalrc
+}
+
+# Binary directory
+SWAL_OLDWALLPAPERDIR=$SWAL_WALLPAPERDIR
+
+# Source things
+SWAL_SOURCE()
+{
+  ls "$SWAL_EXPORTDIR/swalrc" || SWAL_MKCONFIG
+  . "$SWAL_EXPORTDIR/swalrc" || rm -f "$SWAL_EXPORTDIR/swalrc"
+}
+
+# Set image viewer if none is specified.
+SWAL_CHECK()
+{
+  if [ "$SWAL_IMAGE_VIEWER" = "" ]; then
+		if command -v feh > /dev/null; then
+				SWAL_IMAGE_VIEWER=feh
+		elif command -v nsxiv > /dev/null; then
+				SWAL_IMAGE_VIEWER=nsxiv
+		elif command -v sxiv > /dev/null; then
+				SWAL_IMAGE_VIEWER=sxiv
+		fi
+  fi
+
+  command -v xwallpaper > /dev/null || SWAL_DIE
+}
+
+# Die
+SWAL_DIE()
+{
+  SWAL_EXIT=1 && exit 1
+}
+
+# Print usage.
+SWAL_USAGE() {
+  echo "To set a wallpaper, you must create a configuration. To do this, select 'Options' in the menu and set all the options to your liking."
+  echo "The image viewer must be set to an image viewer that supports printing the filename to stdout. If you use nsxiv, set the image viewer to 'nsxiv -ato'."
+  echo "In the case of nsxiv, This means you can press 'm' when previewing an image to select it and then set it."
+  echo "Once you've selected your image using the method you prefer, select how you want to set it."
+  echo "Then your pywal colors will reload, and the wallpaper will be set."
+  echo "For more information, see speedwm-help -a."
+}
+
+# Select wallpaper
+SWAL_SELWALLPAPER()
+{
+  if [ "$ARG1" = "" ]; then
+		SWAL_SELWALLPAPER="$(printf "$(ls "$SWAL_WALLPAPERDIR")\n------\n..\nPreview\nPrevious\nRandom\nFavorites\nAdd used wallpaper to favorites\nOptions\nHelp\nExit" | $RUNLAUNCHER $GRIDARG $GRIDNUM -l 100 -p "What wallpaper would you like to set?")"
+  fi
+}
+
+# Set the type/check what was selected.
+SWAL_SETTYPE()
+{
+  case "$ARG1" in
+  "--randomize") SWAL_SELWALLPAPER="Random" ;;
+  "--previous") SWAL_SELWALLPAPER="Previous" ;;
+  esac
+
+  case "$SWAL_SELWALLPAPER" in
+  "Options") SWAL_MKCONFIG && $0 $@ && exit 0 ;;
+  "") $0 && exit 0 ;;
+  "Favorites") SWAL_SELWALLPAPER="$(printf "$(cat $SWAL_EXPORTDIR/favorites.filename)\n------\n..\nClear\n\nExit" | $RUNLAUNCHER $GRIDARG $GRIDNUM -l 100 -p "What wallpaper would you like to set?")" ; FAVORITES=true ;;
+  "Add used wallpaper to favorites") echo "$(readlink "$SWAL_EXPORTDIR/CurrentWallpaper")" >> $SWAL_EXPORTDIR/favorites ; echo "$(basename "$(readlink "$SWAL_EXPORTDIR/CurrentWallpaper")")" >> $SWAL_EXPORTDIR/favorites.filename && $0 && exit 0 ;;
+  "Preview") SWAL_PREVIEWIMG="$($SWAL_IMAGE_VIEWER "$SWAL_WALLPAPERDIR"/*)" ;;
+  "..") cd "$SWAL_WALLPAPERDIR/.." && SWAL_WALLPAPERDIR="$(pwd)" && SWAL_SELWALLPAPER && SET && exit 0 ;;
+  "Random") SWAL_FULL="$(find $SWAL_WALLPAPERDIR/* -type f | shuf -n 1)" ; SWAL_WALLPAPERDIR="$(dirname "$SWAL_FULL")" ; SWAL_SELWALLPAPER="$(basename "$SWAL_FULL")" ; SWAL_SELWAL=$SWAL_SELWALLPAPER ;;
+  "Previous") SWAL_PREVWAL=$(readlink $SWAL_EXPORTDIR/CurrentWallpaper_prev) ; SWAL_WALLPAPERDIR="$(dirname "$SWAL_PREVWAL")" ; SWAL_SELWALLPAPER="$(basename "$SWAL_PREVWAL")" ;;
+  "Exit") exit 0 ;;
+  "Help") SWAL_USAGE | $RUNLAUNCHER $GRIDARG $GRIDNUM -l 50 -p "How to use" && $0 && exit 0 ;;
+  "------") $0 && exit 0 ;;
+  esac
+
+  # Favorites feature
+  if [ "$FAVORITES" = "true" ]; then
+		case "$SWAL_SELWALLPAPER" in
+		"") $0 && exit 0 ;;
+		"Clear") rm -f $SWAL_EXPORTDIR/favorites* ; $0 && exit 0 ;;
+		"Exit") exit 0 ;;
+		"..") $0 && exit 0 ;;
+		"------") $0 && exit 0 ;;
+		esac
+		SWAL_WALLPAPERDIR="$(dirname "$(cat "$SWAL_EXPORTDIR/favorites" | grep "$SWAL_SELWALLPAPER")")"
+  fi
+
+  # If it's an actual image, use it as wallpaper
+  if [ "$SWAL_SELWALLPAPER" = "Preview" ]; then
+		if [ "$SWAL_PREVIEWIMG" = "" ]; then
+				$0 && exit 0
+		else
+				SWAL_SELWALLPAPER="$SWAL_PREVIEWIMG"
+				SWAL_WALLPAPERDIR=""
+		fi
+  fi
+
+  # Check if it's a directory
+  if [ -d "$SWAL_WALLPAPERDIR/$SWAL_SELWALLPAPER" ]; then
+		cd "$SWAL_WALLPAPERDIR/$SWAL_SELWALLPAPER" && SWAL_WALLPAPERDIR="$SWAL_WALLPAPERDIR/$SWAL_SELWALLPAPER" && SWAL_SELWALLPAPER && SET && exit 0
+  fi
+
+  # Fail if the wallpaper is not a proper wallpaper.
+  FAIL_NOT_REAL() {
+    command -v notify-send > /dev/null && notify-send "The selected wallpaper is not valid/does not exist."
+	$0 ; exit 1
+  }
+
+  ls "$SWAL_WALLPAPERDIR/$SWAL_SELWALLPAPER" || FAIL_NOT_REAL
+
+  # don't set type if using argument
+  if [ "$SWAL_ASK_TYPE" != "false" ]; then
+		if [ "$ARG1" = "" ]; then
+				SWAL_TYPE=$(printf "Center\nTile\nZoom\nStretch\n------\nExit" | $RUNLAUNCHER -p "How do you want to set the wallpaper?" $GRIDARG $GRIDNUM -l 7)
+		else
+				SWAL_TYPE="Stretch"
+		fi
+  fi
+  
+  case "$SWAL_TYPE" in
+  "Center") SWAL_TYPE=center ;;
+  "Tile") SWAL_TYPE=tile ;;
+  "Zoom") SWAL_TYPE=zoom ;;
+  "Stretch") SWAL_TYPE=stretch ;;
+  "Exit") exit 0 ;;
+  "------") $0 && exit 0 ;;
+  "") $0 && exit 0 ;;
+  esac
+
+  # Set type to stretch, shouldn't matter as xwallpaper can determine if it makes sense.
+  if [ "$SWAL_ASK_TYPE" = "false" ]; then
+		  SWAL_TYPE=stretch
+  fi
+
+  # Set variables so that we can use them with xwallpaper directly.
+  SWAL_TYPE="--$SWAL_TYPE"
+  SWAL_WAL_STATUS="0"
+
+  # Check whether or not to ask based on configuration file.
+  if [ "$SWAL_USE_WAL" = "true" ]; then
+		command -v wal > /dev/null && SWAL_USE_WAL="Yes" && SWAL_WAL_STATUS="1"
+  fi
+
+  # Don't perform pywal actions if not installed/used
+  if [ "$SWAL_WAL_STATUS" = "0" ]; then
+		SWAL_USE_WAL="No"
+  fi
+}
+
+# Set the wallpaper.
+SWAL_SETWALLPAPER()
+{
+  $SWAL_OPT $SWAL_TYPE "$SWAL_WALLPAPERDIR/$SWAL_SELWALLPAPER" || FAIL_NOT_REAL
+}
+
+# Export script to autostart on login
+SWAL_EXPORT_SCRIPT()
+{
+  [ "$SWAL_RANDOMIZE" != "true" ] && printf "#!/bin/sh\n$SWAL_OPT $SWAL_TYPE ""'$SWAL_WALLPAPERDIR/$SWAL_SELWALLPAPER'""" > $SWAL_EXPORTDIR/swal_wm || printf "#!/bin/sh\n$0 --randomize\nreturn\n" > $SWAL_EXPORTDIR/swal_wm
+
+  if [ -e "$SWAL_EXPORTDIR/CurrentWallpaper" ]; then
+    rm -f $SWAL_EXPORTDIR/CurrentWallpaper_prev ; ln -s "$(readlink $SWAL_EXPORTDIR/CurrentWallpaper)" $SWAL_EXPORTDIR/CurrentWallpaper_prev
+  fi
+		
+  rm -f $SWAL_EXPORTDIR/CurrentWallpaper ; ln -s "$SWAL_WALLPAPERDIR/$SWAL_SELWALLPAPER" $SWAL_EXPORTDIR/CurrentWallpaper
+
+  chmod +x $SWAL_EXPORTDIR/swal_wm
+}
+
+# Export script to autostart on login for Pywal users
+SWAL_EXPORT_SCRIPT_WAL()
+{
+  [ "$SWAL_RANDOMIZE" != "true" ] && printf "#!/bin/sh\n$SWAL_OPT $SWAL_TYPE ""'$SWAL_WALLPAPERDIR/$SWAL_SELWALLPAPER'""\nwal -qi ""'$SWAL_WALLPAPERDIR/$SWAL_SELWALLPAPER'"" || rm -rf $HOME/.cache/wal ; xrdb -remove\nxrdb ~/.cache/wal/colors.Xresources" > $SWAL_EXPORTDIR/swal_wm || printf "#!/bin/sh\n$0 --randomize\nreturn\n" > $SWAL_EXPORTDIR/swal_wm
+
+  # make script executable
+  chmod +x $SWAL_EXPORTDIR/swal_wm
+
+  rm -rf $HOME/.cache/wal # Delete previous colors
+
+  wal -nqi "'$SWAL_WALLPAPERDIR/$SWAL_SELWALLPAPER'" && xrdb ~/.cache/wal/colors.Xresources || xrdb -remove # Remove xrdb values
+
+  if [ -e "$SWAL_EXPORTDIR/CurrentWallpaper" ]; then
+		rm -f $SWAL_EXPORTDIR/CurrentWallpaper_prev ; ln -s "$(readlink $SWAL_EXPORTDIR/CurrentWallpaper)" $SWAL_EXPORTDIR/CurrentWallpaper_prev
+  fi
+
+  rm -f $SWAL_EXPORTDIR/CurrentWallpaper ; ln -s "$SWAL_WALLPAPERDIR/$SWAL_SELWALLPAPER" $SWAL_EXPORTDIR/CurrentWallpaper
+
+  command -v wal > /dev/null && wal -nqi "$SWAL_WALLPAPERDIR/$SWAL_SELWALLPAPER"
+  libspeedwm --perform core_wm_reload
+  speedwm -s "Loading"
+
+  # run script
+  if [ -e "$SWAL_EXPORTDIR/postrun.sh" ]; then
+		  $SWAL_EXPORTDIR/postrun.sh
+  fi
+}
+
+# Send notification
+SWAL_SENDNOTIFICATION() {
+  if [ "$SWAL_SELWAL" = "" ]; then
+		command -v notify-send > /dev/null && notify-send "  $SWAL_SELWALLPAPER set as wallpaper in $(echo $SWAL_TYPE | sed "s|--||g") mode."
+  else
+		command -v notify-send > /dev/null && notify-send "  $SWAL_SELWAL set as wallpaper in $(echo $SWAL_TYPE | sed "s|--||g") mode."
+  fi
+
+  exit 0
+}
+
+SWAL_DEFAULT_CONFIG
+SWAL_SOURCE || SWAL_DIE
+SWAL_CHECK || SWAL_DIE
+SWAL_SELWALLPAPER || SWAL_DIE
+
+SET() {
+  SWAL_SETTYPE || SWAL_DIE
+  SWAL_SETWALLPAPER || SWAL_DIE
+
+  # Pywal
+  case "$SWAL_USE_WAL" in
+  "Yes") SWAL_EXPORT_SCRIPT_WAL || SWAL_DIE ;;
+  "No") SWAL_EXPORT_SCRIPT || SWAL_DIE ;;
+  "") exit 0 ;;
+  esac
+
+  rm -rf $HOME/.local/share/swal_wm
+  cp $SWAL_EXPORTDIR/swal_wm $HOME/.local/share/swal_wm
+  chmod +x $HOME/.local/share/swal_wm
+  SWAL_SENDNOTIFICATION
+}
+
+SET
+
+$0 && exit 0

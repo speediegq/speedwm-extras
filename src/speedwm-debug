@@ -1,0 +1,20 @@
+#!/bin/sh
+# speedwm-debug
+# script to debug speedwm in xephyr
+# license: gplv3
+
+# xephyr is not installed
+install_xephyr() {
+		echo "Xephyr not installed, please install it."
+		exit 1
+}
+
+command -v Xephyr > /dev/null || install_xephyr
+
+Xephyr -screen 1024x768 :80 &
+sleep 1
+
+export DISPLAY=:80
+speedwm
+killall Xephyr
+

@@ -1,0 +1,94 @@
+#!/bin/sh
+# speedwm-applist
+# list extra applications
+# license: gplv3
+
+# rl
+case "$RUNLAUNCHER" in
+"") RUNLAUNCHER=dmenu ;;
+esac
+
+# assume we have grid as default
+HAVE_GRID="true"
+
+if [ -e "$HOME/.config/speedwm/globalrc" ]; then
+		. $HOME/.config/speedwm/globalrc
+		echo "Loaded configuration!"
+else
+		printf "HAVE_GRID=$HAVE_GRID # Whether or not to use the Grid argument. If you do not have the dmenu grid patch, set this to false. Doing so will disable grid." > $HOME/.config/speedwm/globalrc
+fi
+
+# grid number is one
+if [ "$HAVE_GRID" = "true" ]; then
+		GRIDNUM="1"
+fi
+
+# grid argument
+if [ "$HAVE_GRID" = "true" ]; then
+		GRIDARG="-g"
+fi
+
+# create applist
+MK_APPLIST() {
+		if [ -e "$HOME/.local/share/speedwm/applist" ]; then
+				USER_CMD="$(printf "$(cat $HOME/.local/share/speedwm/applist)\n------\nAdd command\nRemove command\nClear\n" | $RUNLAUNCHER -l 20 -p 'Run:' $GRIDARG $GRIDNUM)"
+		else
+				mkdir -p $HOME/.local/share/speedwm
+				echo "No commands added." > $HOME/.local/share/speedwm/applist
+				$0 && exit 0
+		fi
+}
+
+# remove commands
+REMOVE_CMD() {
+		USER_CMD="$(printf "$(cat $HOME/.local/share/speedwm/applist)\n------\nAdd command\nRemove command\nClear\n" | $RUNLAUNCHER -l 20 -p 'Remove: ' $GRIDARG $GRIDNUM)"
+
+		if [ "$(cat $HOME/.local/share/speedwm/applist | wc -l)" -lt "2" ]; then
+				rm -f $HOME/.local/share/speedwm/applist
+		else
+				grep -v "$USER_CMD" $HOME/.local/share/speedwm/applist | sed ':a;N;$!ba;s/\n//g' > /tmp/applist
+				mv /tmp/applist $HOME/.local/share/speedwm/applist
+		fi
+
+		$0 && exit 0
+}
+
+
+# clear commands
+CLEAR_CMD() {
+		case "$(printf "Yes\nNo\n" | $RUNLAUNCHER -l 2 -p 'Are you sure?')" in
+		"Yes") rm -f $HOME/.local/share/speedwm/applist ;;
+		esac
+
+		$0 && exit 0
+}
+
+
+# add command
+ADD_CMD() {
+		grep -q "No commands added" $HOME/.local/share/speedwm/applist && rm -f $HOME/.local/share/speedwm/applist
+		USER_I_ARG="$(printf "" | $RUNLAUNCHER -l 0 -p 'Enter a command:' $GRIDARG $GRIDNUM)"
+		printf "$USER_I_ARG\n" >> $HOME/.local/share/speedwm/applist
+		$0 && exit 0
+}
+
+MK_APPLIST
+
+# check user cmd
+if [ "$USER_CMD" = "" ]; then
+		exit 0
+else
+		if [ "$USER_CMD" = "Add command" ]; then
+				ADD_CMD
+		else
+				if [ "$USER_CMD" = "Clear" ]; then
+						CLEAR_CMD
+				else
+						if [ "$USER_CMD" = "Remove command" ]; then
+								REMOVE_CMD
+						else
+								$USER_CMD
+						fi
+				fi
+		fi
+fi

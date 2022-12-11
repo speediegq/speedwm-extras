@@ -1,0 +1,118 @@
+#!/bin/sh
+# speedwm-winnav
+# Alt+tab navigation for speedwm
+#
+# This script is from the suckless.org website.
+# I made the following changes to it:
+# - POSIX compliant
+# - Tab goes down, j/k to navigate
+# - Removed class from $windows making it look nicer
+# - Configuration file
+# - dmenu center patch support
+# - Other small improvements.
+
+RESTORE() {
+  if [ -e "${BINDIR}xmodmap" ]; then
+		xmodmap -e "keycode 23 = Tab"
+		xmodmap -e "keycode 116 = Down"
+
+		# Vim
+		xmodmap -e "keycode 44 = j"
+		xmodmap -e "keycode 45 = k"
+  fi
+}
+
+HAVE_GRID="true"
+
+if [ -e "$HOME/.config/speedwm/globalrc" ]; then
+		. $HOME/.config/speedwm/globalrc
+else
+		
+		printf "HAVE_GRID=$HAVE_GRID # Whether or not to use the Grid argument. If you do not have the dmenu grid patch, set this to false. Doing so will disable grid." > $HOME/.config/speedwm/globalrc
+fi
+
+if [ "$HAVE_GRID" = "true" ]; then
+		GRIDNUM="1"
+fi
+
+if [ "$HAVE_GRID" = "true" ]; then
+		GRIDARG="-g"
+fi
+
+case "$RUNLAUNCHER" in
+"") RUNLAUNCHER=dmenu ;;
+esac
+
+BINDIR="$(dirname $(command -v speedwm-core))/"
+DOTDIR="$HOME/.config/speedwm"
+POSITION="bottom" # top, bottom, center (your $RUNLAUNCHER must support center for this to work)
+
+mkdir -p "$DOTDIR"
+
+# Create config if it does not exist.
+if [ -e "$DOTDIR/winnavrc" ]; then
+		. "$DOTDIR/winnavrc"
+else
+		printf "POSITION=$POSITION # top, bottom, center (Your installed $RUNLAUNCHER must support center (-c) for this to work)" > $DOTDIR/winnavrc
+fi
+
+# Set position based on config
+case "$POSITION" in
+"bottom") POSARG="-b" ;;
+"top") POSARG="" ;;
+"center") POSARG="-c" ;;
+esac
+
+# Check if wmctrl is available
+if [ -e "${BINDIR}wmctrl" ]; then
+		echo "wmctrl found"
+
+		case "$(wmctrl -xl | wc -l)" in
+		"") echo "No clients found." ; exit 1 ;;
+		"1") echo "One client running, will not open menu." ; exit 0 ;;
+		esac
+else
+		echo "wmctrl not found, exiting." && exit 1
+fi
+
+SET() {
+  if [ -e "${BINDIR}xmodmap" ]; then
+		xmodmap -e "keycode 23 = Down"
+		xmodmap -e "keycode 116 = Tab"
+
+		# Vim
+		xmodmap -e "keycode 44 = Down"
+		xmodmap -e "keycode 45 = Up"
+  fi
+}
+
+SET
+
+windows=$(wmctrl -xl | tr -s '[:blank:]' | cut -d ' ' -f 3-3,5- | sed 's/^[a-zA-Z0-9-]*\.//' | sort | uniq)
+echo "Windows are:\n $windows\n============================"
+windows_class=$(echo $windows | awk '{ print $1 }')
+echo "Class is:\n $windows_class\n============================"
+
+# Add spaces to align the WM_NAMEs of the windows
+max=$(echo "$windows" | awk '{cur=length($1); max=(cur>max?cur:max)} END{print max}')
+echo "Max is:\n$max"
+
+windows=$(echo "$windows" | \
+              awk -v max="$max" \
+                  '{cur=length($1); printf $1; \
+                    for(i=0; i < max - cur + 1; i++) printf " "; \
+                    $1 = ""; printf "%s\n", $0}')
+
+
+target=$(printf "\n$windows" | cut -f 2- -d ' ' | sed 's/^ *//g' | $RUNLAUNCHER $POSARG -l 10 $GRIDARG $GRIDNUM -p "Which window?" | tr -s '[:blank:]' | sed "s/$class | //g")
+
+case "$target" in
+"") RESTORE && exit 0 ;;
+esac
+
+wmctrl -a "$target" && echo "Switched focus"
+
+# show hidden window
+libspeedwm --perform client_visibility_show
+
+RESTORE
